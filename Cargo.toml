@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+battery = "0.7.8"
 clap = { version = "4.6.0", features = ["derive"] }
 os_info = "3.14.0"
 owo-colors = "4.3.0"
+serde = { version = "1.0.228", features = ["derive"] }
+strum = "0.28.0"
+strum_macros = "0.28.0"

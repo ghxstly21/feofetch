@@ -1,7 +1,15 @@
+mod settings;
+
 use std::process::exit;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, ValueEnum, Subcommand};
 use owo_colors::OwoColorize;
 use owo_colors::colors::*;
+
+#[derive(Clone, Debug, Subcommand, ValueEnum)]
+enum Command {
+    Settings,
+    PrintSettings
+}
 
 #[derive(Clone, Debug, ValueEnum)]
 enum Color {
@@ -29,17 +37,40 @@ enum Color {
 
 /// Shows system information
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = "Showing your system information... but made in Rust")]
+#[command(name = "feofetch", version, about, long_about = "Showing your system information... but made in Rust")]
 struct Args {
     /// The color to use for ascii art
     #[arg(short, long, default_value = "auto")]
     color: Color,
 
     /// List of information to hide
-    #[arg(long)]
-    hide: Vec<String>,
+    #[arg(long, num_args = 1..)]
+    hide: Vec<settings::Setting>,
+
+    #[command(subcommand)]
+    command: Option<Command>
 }
 fn main() {
     let args = Args::parse();
-    let supported_platforms = ["macos", "windows", "linux"];
+    match args.command {
+        Some(command) => {
+            match command {
+                Command::Settings => {
+                    settings::edit_settings();
+                    return;
+                },
+                Command::PrintSettings => {
+                    print_settings();
+                    return;
+                },
+            }
+        }
+        None => {}
+    }
+}
+
+
+
+fn print_settings() {
+
 }
