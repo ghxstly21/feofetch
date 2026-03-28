@@ -1,8 +1,6 @@
 mod settings;
 
-use std::process::exit;
 use clap::{Parser, ValueEnum, Subcommand};
-use owo_colors::OwoColorize;
 use owo_colors::colors::*;
 
 #[derive(Clone, Debug, Subcommand, ValueEnum)]
@@ -60,17 +58,11 @@ fn main() {
                     return;
                 },
                 Command::PrintSettings => {
-                    print_settings();
+                    settings::print_settings();
                     return;
                 },
             }
         }
         None => {}
     }
-}
-
-
-
-fn print_settings() {
-
 }
