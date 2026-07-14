@@ -1,7 +1,6 @@
 mod settings;
 
 use clap::{Parser, ValueEnum, Subcommand};
-use owo_colors::colors::*;
 
 #[derive(Clone, Debug, Subcommand, ValueEnum)]
 enum Command {

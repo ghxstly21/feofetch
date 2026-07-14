@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
 use dirs::config_dir;
-use std::fs::create_dir;
 use std::fs::create_dir_all;
-use std::fs::File;
-use std::path::Path;
 use toml;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs;
+use clap::ValueEnum;
+use owo_colors::{OwoColorize, Stream::Stdout};
 
 #[derive(Serialize, Deserialize)]
 pub struct Settings {
@@ -64,7 +63,106 @@ impl Settings {
             ConfigError::new("could not write to your config file", err.to_string())
         })
     }
+
+    pub fn get(&self, s: Setting) -> bool {
+        match s {
+            Setting::User => self.user,
+            Setting::Battery => self.battery,
+            Setting::Os => self.os,
+            Setting::Host => self.host,
+            Setting::Kernel => self.kernel,
+            Setting::Uptime => self.uptime,
+            Setting::Packages => self.packages,
+            Setting::Shell => self.shell,
+            Setting::Resolution => self.resolution,
+            Setting::De => self.de,
+            Setting::Wm => self.wm,
+            Setting::WmTheme => self.wm_theme,
+            Setting::Terminal => self.terminal,
+            Setting::Font => self.font,
+            Setting::Cpu => self.cpu,
+            Setting::Gpu => self.gpu,
+            Setting::Memory => self.memory
+        }
+    }
+
+    pub fn set(&mut self, s: Setting, enabled: bool) {
+        match s {
+            Setting::User => self.user = enabled,
+            Setting::Battery => self.battery = enabled,
+            Setting::Os => self.os = enabled,
+            Setting::Host => self.host = enabled,
+            Setting::Kernel => self.kernel = enabled,
+            Setting::Uptime => self.uptime = enabled,
+            Setting::Packages => self.packages = enabled,
+            Setting::Shell => self.shell = enabled,
+            Setting::Resolution => self.resolution = enabled,
+            Setting::De => self.de = enabled,
+            Setting::Wm => self.wm = enabled,
+            Setting::WmTheme => self.wm_theme = enabled,
+            Setting::Terminal => self.terminal = enabled,
+            Setting::Font => self.font = enabled,
+            Setting::Cpu => self.cpu = enabled,
+            Setting::Gpu => self.gpu = enabled,
+            Setting::Memory => self.memory = enabled
+        }
+    }
 }
+
+impl Display for Settings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for (setting, enabled) in [
+            ("User", self.user),
+            ("Battery", self.battery),
+            ("OS", self.os),
+            ("Host", self.host),
+            ("Kernel", self.kernel),
+            ("Uptime", self.uptime),
+            ("Packages", self.packages),
+            ("Shell", self.shell),
+            ("Resolution", self.resolution),
+            ("DE", self.de),
+            ("WM", self.wm),
+            ("WM Theme", self.wm_theme),
+            ("Terminal", self.terminal),
+            ("Font", self.font),
+            ("CPU", self.cpu),
+            ("GPU", self.gpu),
+            ("Memory", self.memory)
+        ] {
+            if enabled {
+                writeln!(f, "{}", "show".if_supports_color(Stdout, |text| text.green()))?;
+            } else {
+                writeln!(f, "{}", "hide".if_supports_color(Stdout, |text| text.red()))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Setting {
+    User,
+    Battery,
+    Os,
+    Host,
+    Kernel,
+    Uptime,
+    Packages,
+    Shell,
+    Resolution,
+    De,
+    Wm,
+    WmTheme,
+    Terminal,
+    Font,
+    Cpu,
+    Gpu,
+    Memory,
+}
+
+
+
 
 #[derive(Debug)]
 pub struct ConfigError {
@@ -74,10 +172,11 @@ pub struct ConfigError {
 
 impl Display for ConfigError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match &self.err {
-            Some(e) => write!(f, "\nfeofetch config error: {}\nfull error: {}\n", self.message, e),
-            None => write!(f, "\nfeofetch config error: {}\n", self.message)
+        writeln!(f, "\nfeofetch config error: {}", self.message)?;
+        if let Some(e) = &self.err {
+            writeln!(f, "full error: {e}")?;
         }
+        Ok(())
     }
 }
 
@@ -122,20 +221,15 @@ pub fn load_settings() -> Result<Settings, ConfigError> {
                 ConfigError::new("failed to load your settings", e.to_string())
             })
     } else {
-        if !settings_path.exists() {
-            // try to create the feofetch dir, if it failed, return Err()
-            create_dir(&settings_path).map_err(|e|
-                {
-                    ConfigError::new("failed to create feofetch dir", e.to_string())
-                })?;
-        }
+        create_dir_all(&settings_path).map_err(|e|
+        ConfigError::new("failed to create feofetch dir", e.to_string()))?;
         let settings = Settings::new();
 
         let toml_str = toml::to_string(&settings).map_err(|e|
             {ConfigError::new("could not convert settings to toml format", e.to_string())}
         )?;
 
-        fs::write(settings_path.join(settings_path.join("config.toml")), toml_str).map_err(|e|
+        fs::write(settings_path.join("config.toml"), toml_str).map_err(|e|
             {ConfigError::new("failed to write default settings into your config file", e.to_string())}
         )?;
 
@@ -144,6 +238,11 @@ pub fn load_settings() -> Result<Settings, ConfigError> {
 }
 
 pub fn edit_settings() {
+}
+
+pub fn print_settings() -> Result<(), ConfigError> {
+    println!("{}", load_settings()?);
+    Ok(())
 }
 
 
