@@ -30,7 +30,7 @@ pub struct Settings {
 }
 impl Default for Settings {
     fn default() -> Self {
-        Self {
+        Settings {
             user: true,
             battery: true,
             os: true,
@@ -52,16 +52,59 @@ impl Default for Settings {
     }
 }
 
+pub struct SettingsIter {
+    index: usize
+}
+
+impl SettingsIter {
+    fn new() -> Self {
+        SettingsIter { index: 0 }
+    }
+}
+
+impl Iterator for SettingsIter {
+    type Item = Setting;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let setting = match self.index {
+            0 => Setting::User,
+            1 => Setting::Battery,
+            2 => Setting::Os,
+            3 => Setting::Host,
+            4 => Setting::Kernel,
+            5 => Setting::Uptime,
+            6 => Setting::Packages,
+            7 => Setting::Shell,
+            8 => Setting::Resolution,
+            9 => Setting::De,
+            10 => Setting::Wm,
+            11 => Setting::WmTheme,
+            12 => Setting::Terminal,
+            13 => Setting::Font,
+            14 => Setting::Cpu,
+            15 => Setting::Gpu,
+            16 => Setting::Memory,
+            _ => return None
+        };
+        self.index += 1;
+        Some(setting)
+    }
+}
+
 impl Settings {
     pub fn new() -> Self {
-        Self::default()
+        Settings::default()
     }
 
     // converts settings into toml format
     pub fn to_toml(&self) -> Result<String, ConfigError>  {
         toml::to_string(self).map_err(|err| {
-            ConfigError::new("could not write to your config file", err.to_string())
+            ConfigError::new("could not convert settings to toml format", err.to_string())
         })
+    }
+
+    pub fn iter(&self) -> SettingsIter {
+        SettingsIter::new()
     }
 
     pub fn get(&self, s: Setting) -> bool {
@@ -109,27 +152,12 @@ impl Settings {
     }
 }
 
+
+
 impl Display for Settings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for (setting, enabled) in [
-            ("User", self.user),
-            ("Battery", self.battery),
-            ("OS", self.os),
-            ("Host", self.host),
-            ("Kernel", self.kernel),
-            ("Uptime", self.uptime),
-            ("Packages", self.packages),
-            ("Shell", self.shell),
-            ("Resolution", self.resolution),
-            ("DE", self.de),
-            ("WM", self.wm),
-            ("WM Theme", self.wm_theme),
-            ("Terminal", self.terminal),
-            ("Font", self.font),
-            ("CPU", self.cpu),
-            ("GPU", self.gpu),
-            ("Memory", self.memory)
-        ] {
+        for setting in self.iter() {
+            let enabled = self.get(setting);
             if enabled {
                 writeln!(f, "{setting}: {}", "show".if_supports_color(Stdout, |text| text.green()))?;
             } else {
@@ -161,8 +189,30 @@ pub enum Setting {
     Memory,
 }
 
-
-
+impl Display for Setting {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Setting::User => write!(f, "User")?,
+            Setting::Battery => write!(f, "Battery")?,
+            Setting::Os => write!(f, "OS")?,
+            Setting::Host => write!(f, "Host")?,
+            Setting::Kernel => write!(f, "Kernel")?,
+            Setting::Uptime => write!(f, "Uptime")?,
+            Setting::Packages => write!(f, "Packages")?,
+            Setting::Shell => write!(f, "Shell")?,
+            Setting::Resolution => write!(f, "Resolution")?,
+            Setting::De => write!(f, "DE")?,
+            Setting::Wm => write!(f, "WM")?,
+            Setting::WmTheme => write!(f, "WM Theme")?,
+            Setting::Terminal => write!(f, "Terminal")?,
+            Setting::Font => write!(f, "Font")?,
+            Setting::Cpu => write!(f, "CPU")?,
+            Setting::Gpu => write!(f, "GPU")?,
+            Setting::Memory => write!(f, "Memory")?,
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub struct ConfigError {
@@ -204,40 +254,34 @@ impl ConfigError {
 // if the user's config file already exists, returns Settings contained there
 // if it doesn't exist, creates a new config file with default settings and returns a default Settings object
 pub fn load_settings() -> Result<Settings, ConfigError> {
-    let settings_path = match config_dir() {
-        Some(path) => path.join("feofetch"),
-        None => return Err(ConfigError::new("could not locate your computer's config directory", None))
-    };
+    let settings: Settings;
+    let settings_path =
+        config_dir()
+            .ok_or(ConfigError::new("could not locate your computer's config directory", None))?
+            .join("feofetch")
+            .join("config.toml");
 
-    if settings_path.join("config.toml").exists() {
-        // read from the existing config file
-        let config_content = fs::read_to_string(settings_path.join("config.toml")).map_err(|e|
-            {
-                ConfigError::new("failed to read your config file", e.to_string())
+    if settings_path.exists() {
+        let config_content = fs::read_to_string(settings_path)
+            .map_err(|e| {
+            ConfigError::new("failed to read your config file", e.to_string())
             })?;
-
-            toml::from_str(&config_content).map_err(|e|
-            {
-                ConfigError::new("failed to load your settings", e.to_string())
-            })
+        settings = toml::from_str(&config_content)
+            .map_err(|e| ConfigError::new("failed to load your settings", e.to_string()))?;
     } else {
-        create_dir_all(&settings_path).map_err(|e|
-        ConfigError::new("failed to create feofetch dir", e.to_string()))?;
-        let settings = Settings::new();
-
-        let toml_str = toml::to_string(&settings).map_err(|e|
-            {ConfigError::new("could not convert settings to toml format", e.to_string())}
-        )?;
-
-        fs::write(settings_path.join("config.toml"), toml_str).map_err(|e|
-            {ConfigError::new("failed to write default settings into your config file", e.to_string())}
-        )?;
-
-        Ok(settings)
+        create_dir_all(&settings_path.parent().unwrap())
+            .map_err(|e| ConfigError::new("failed to create feofetch dir", e.to_string()))?;
+        settings = Settings::new();
+        let toml_str = settings.to_toml()?;
+        fs::write(settings_path, toml_str)
+            .map_err(|e| ConfigError::new("failed to write default settings into your config file", e.to_string()))?;
     }
+
+    Ok(settings)
 }
 
 pub fn edit_settings() -> Result<(), ConfigError> {
+    println!("---Feofetch Settings Editor---");
     todo!()
 }
 
