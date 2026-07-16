@@ -131,9 +131,9 @@ impl Display for Settings {
             ("Memory", self.memory)
         ] {
             if enabled {
-                writeln!(f, "{}", "show".if_supports_color(Stdout, |text| text.green()))?;
+                writeln!(f, "{setting}: {}", "show".if_supports_color(Stdout, |text| text.green()))?;
             } else {
-                writeln!(f, "{}", "hide".if_supports_color(Stdout, |text| text.red()))?;
+                writeln!(f, "{setting}: {}", "hide".if_supports_color(Stdout, |text| text.red()))?;
             }
         }
         Ok(())
@@ -237,7 +237,8 @@ pub fn load_settings() -> Result<Settings, ConfigError> {
     }
 }
 
-pub fn edit_settings() {
+pub fn edit_settings() -> Result<(), ConfigError> {
+    todo!()
 }
 
 pub fn print_settings() -> Result<(), ConfigError> {

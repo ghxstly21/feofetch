@@ -1,6 +1,11 @@
 mod settings;
+mod errors;
+mod fetch;
+
+use crate::errors::FeoError;
 
 use clap::{Parser, ValueEnum, Subcommand};
+use std::process::ExitCode;
 
 #[derive(Clone, Debug, Subcommand, ValueEnum)]
 enum Command {
@@ -47,21 +52,29 @@ struct Args {
     #[command(subcommand)]
     command: Option<Command>
 }
-fn main() {
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(fe) => {
+            eprintln!("{fe}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), FeoError> {
     let args = Args::parse();
     match args.command {
-        Some(command) => {
-            match command {
-                Command::Settings => {
-                    settings::edit_settings();
-                    return;
-                },
-                Command::PrintSettings => {
-                    settings::print_settings();
-                    return;
-                },
-            }
+        Some(Command::Settings) => {
+            settings::edit_settings()?
         }
-        None => {}
+        Some(Command::PrintSettings) => {
+            settings::print_settings()?
+        }
+        None => {
+            todo!()
+        }
     }
+    Ok(())
 }
