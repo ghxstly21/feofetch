@@ -5,11 +5,18 @@ use toml;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs;
+use std::path::PathBuf;
 use clap::ValueEnum;
 use owo_colors::{OwoColorize, Stream::Stdout};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
+use crossterm::{cursor, terminal, ExecutableCommand};
+use std::io;
+use std::fmt::Write;
 
 #[derive(Serialize, Deserialize)]
 pub struct Settings {
+    pub settings_path: PathBuf,
     pub user: bool,
     pub battery: bool,
     pub os: bool,
@@ -27,29 +34,6 @@ pub struct Settings {
     pub cpu: bool,
     pub gpu: bool,
     pub memory: bool,
-}
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            user: true,
-            battery: true,
-            os: true,
-            host: true,
-            kernel: true,
-            uptime: true,
-            packages: true,
-            shell: true,
-            resolution: true,
-            de: true,
-            wm: true,
-            wm_theme: true,
-            terminal: true,
-            font: true,
-            cpu: true,
-            gpu: true,
-            memory: true,
-        }
-    }
 }
 
 pub struct SettingsIter {
@@ -92,8 +76,27 @@ impl Iterator for SettingsIter {
 }
 
 impl Settings {
-    pub fn new() -> Self {
-        Settings::default()
+    pub fn new(settings_path: PathBuf) -> Self {
+        Self {
+            settings_path,
+            user: true,
+            battery: true,
+            os: true,
+            host: true,
+            kernel: true,
+            uptime: true,
+            packages: true,
+            shell: true,
+            resolution: true,
+            de: true,
+            wm: true,
+            wm_theme: true,
+            terminal: true,
+            font: true,
+            cpu: true,
+            gpu: true,
+            memory: true,
+        }
     }
 
     // converts settings into toml format
@@ -149,6 +152,19 @@ impl Settings {
             Setting::Gpu => self.gpu = enabled,
             Setting::Memory => self.memory = enabled
         }
+    }
+
+    pub fn to_string_colorless(&self) -> String {
+        let mut s = String::new();
+        for setting in self.iter() {
+            let enabled = self.get(setting);
+            if enabled {
+                writeln!(s, "{setting}: show").expect("writeln! macro failed to write to string");
+            } else {
+                writeln!(s, "{setting}: hide").expect("writeln! macro failed to write to string");
+            }
+        }
+        s
     }
 }
 
@@ -213,6 +229,31 @@ impl Display for Setting {
         Ok(())
     }
 }
+impl std::str::FromStr for Setting {
+    type Err = ConfigError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "user" => Ok(Setting::User),
+            "battery" => Ok(Setting::Battery),
+            "os" => Ok(Setting::Os),
+            "host" => Ok(Setting::Host),
+            "kernel" => Ok(Setting::Kernel),
+            "uptime" => Ok(Setting::Uptime),
+            "packages" => Ok(Setting::Packages),
+            "shell" => Ok(Setting::Shell),
+            "resolution" => Ok(Setting::Resolution),
+            "de" => Ok(Setting::De),
+            "wm" => Ok(Setting::Wm),
+            "wm theme" => Ok(Setting::WmTheme),
+            "terminal" => Ok(Setting::Terminal),
+            "font" => Ok(Setting::Font),
+            "cpu" => Ok(Setting::Cpu),
+            "gpu" => Ok(Setting::Gpu),
+            "memory" => Ok(Setting::Memory),
+            _ => Err(ConfigError::new("invalid key for setting", Some(s.to_string())))
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ConfigError {
@@ -232,20 +273,21 @@ impl Display for ConfigError {
 
 impl Error for ConfigError {}
 
-impl ConfigError {
+impl From<ReadlineError> for ConfigError {
+    fn from(value: ReadlineError) -> Self {
+        Self::new("failed to read from stdin", value.to_string())
+    }
+}
 
+impl From<io::Error> for ConfigError {
+    fn from(value: io::Error) -> Self {
+        Self::new("io error during config file operation", value.to_string())
+    }
+}
+
+impl ConfigError {
     fn new(message: &'static str, err: impl Into<Option<String>>) -> Self {
         ConfigError {message, err: err.into()}
-    }
-    pub fn message(&self) -> &'static str {
-        self.message
-    }
-
-    pub fn error(&self) -> &str {
-        match &self.err {
-            Some(e) => e.as_str(),
-            None => ""
-        }
     }
 }
 
@@ -271,23 +313,69 @@ pub fn load_settings() -> Result<Settings, ConfigError> {
     } else {
         create_dir_all(&settings_path.parent().unwrap())
             .map_err(|e| ConfigError::new("failed to create feofetch dir", e.to_string()))?;
-        settings = Settings::new();
-        let toml_str = settings.to_toml()?;
-        fs::write(settings_path, toml_str)
-            .map_err(|e| ConfigError::new("failed to write default settings into your config file", e.to_string()))?;
+        settings = Settings::new(settings_path);
+        save_settings(&settings)?;
     }
 
     Ok(settings)
 }
 
+pub fn save_settings(settings: &Settings) -> Result<(), ConfigError> {
+    let toml_str = settings.to_toml()?;
+    fs::write(&settings.settings_path, toml_str)
+        .map_err(|e| ConfigError::new("failed to write default settings into your config file", e.to_string()))?;
+
+    Ok(())
+}
+
 pub fn edit_settings() -> Result<(), ConfigError> {
+    let mut settings = load_settings()?;
+    let settings_str = settings.to_string_colorless();
+
     println!("---Feofetch Settings Editor---");
-    todo!()
+    println!("Enter show / hide values to change each setting.");
+    let settings_splits = settings_str
+        .lines()
+        .map(|line| {
+           let (prompt, enabled) = line.split_once(": ").unwrap();
+            (prompt, enabled)
+        });
+    let mut rl = DefaultEditor::new()?;
+    for (prompt, enabled) in settings_splits {
+        let curr_setting: Setting = prompt.parse()?;
+        let mut choice: String;
+        let choice_bool;
+
+        loop {
+            choice = rl
+                    .readline_with_initial(format!("{prompt}: ").as_str(), (enabled, ""))?
+                    .trim()
+                    .to_lowercase();
+            if matches!(choice.as_str(), "show" | "hide") {
+                choice_bool = choice == "show";
+                settings.set(curr_setting, choice_bool);
+                break;
+            }
+        }
+        // clear the line they just entered
+        io::stdout()
+            .execute(cursor::Hide)?
+            .execute(cursor::MoveToPreviousLine(1))?
+            .execute(terminal::Clear(terminal::ClearType::CurrentLine))?;
+        // print with color formatting on their choice
+        if choice_bool {
+            println!("{prompt}: {}", choice.as_str().if_supports_color(Stdout,|text| text.green()));
+        } else {
+            println!("{prompt}: {}", choice.as_str().if_supports_color(Stdout, |text| text.red()));
+        }
+        io::stdout().execute(cursor::Show)?;
+    }
+    // save the settings
+    save_settings(&settings)?;
+    Ok(())
 }
 
 pub fn print_settings() -> Result<(), ConfigError> {
     println!("{}", load_settings()?);
     Ok(())
 }
-
-

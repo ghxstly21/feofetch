@@ -8,7 +8,7 @@ pub enum FeoError {
 
 impl Display for FeoError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return match self {
+        match self {
             FeoError::ConfigError(ce) => ce.fmt(f)
         }
     }
